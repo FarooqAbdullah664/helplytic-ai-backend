@@ -4,7 +4,7 @@ const { protect } = require('../middleware/authMiddleware');
 const { getSuggestions } = require('../utils/geminiAI');
 const { detectCategory, extractTags, detectUrgency, generateSummary } = require('../utils/aiEngine');
 
-router.post('/suggest', protect, async (req, res, next) => {
+router.post('/suggest', async (req, res, next) => {
   try {
     const { title, description } = req.body;
 

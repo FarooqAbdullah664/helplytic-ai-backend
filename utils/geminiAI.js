@@ -78,7 +78,7 @@ urgency must be one of: low, medium, high`;
     });
 
     req.on('error', (e) => reject(new Error('Network error: ' + e.message)));
-    req.setTimeout(15000, () => {
+    req.setTimeout(8000, () => {
       req.destroy();
       reject(new Error('Gemini request timed out'));
     });
