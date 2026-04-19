@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 
-// Cache connection across serverless invocations
 let cached = global.mongoose;
 if (!cached) {
   cached = global.mongoose = { conn: null, promise: null };
@@ -15,7 +14,6 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
       maxPoolSize: 10,
-      bufferCommands: false,
     }).then(m => {
       console.log(`✅ MongoDB connected`);
       return m;

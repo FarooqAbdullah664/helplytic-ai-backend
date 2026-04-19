@@ -72,6 +72,16 @@ if (process.env.NODE_ENV !== 'production') {
 
 app.set('onlineUsers', onlineUsers);
 
+// ── Ensure DB connected on every request ────────────────────
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    res.status(503).json({ message: 'Database unavailable' });
+  }
+});
+
 // ── Security Middleware ─────────────────────────────────────
 app.use(helmet());
 app.use(cors({
