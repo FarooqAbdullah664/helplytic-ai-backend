@@ -20,7 +20,7 @@ const messageRoutes = require('./routes/messageRoutes');
 const aiRoutes      = require('./routes/aiRoutes');
 
 // ── Connect DB ──────────────────────────────────────────────
-connectDB();
+connectDB().catch(err => console.error('DB init error:', err.message));
 
 const app        = express();
 const httpServer = http.createServer(app);
