@@ -4,15 +4,13 @@ const http = require('http');
 // do not change
 const dns = require("node:dns");
 
-
-const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
-// do not change this lline 
+// do not change this line
 dns.setServers(["1.1.1.1", "8.8.8.8"]);
 
 const authRoutes    = require('./routes/authRoutes');
@@ -27,7 +25,7 @@ connectDB();
 const app        = express();
 const httpServer = http.createServer(app);
 
-// ── Socket.io ───────────────────────────────────────────────
+// ── Allowed Origins ─────────────────────────────────────────
 const allowedOrigins = [
   process.env.CLIENT_URL,
   'http://localhost:5173',
@@ -36,37 +34,42 @@ const allowedOrigins = [
   'http://localhost:3000',
 ].filter(Boolean);
 
-const io = new Server(httpServer, {
-  cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true },
-});
-
+// ── Socket.io (only in non-serverless env) ──────────────────
 const onlineUsers = {};
 
-io.on('connection', (socket) => {
-  socket.on('user_connected', (userId) => {
-    onlineUsers[userId] = socket.id;
-    io.emit('online_users', Object.keys(onlineUsers));
+if (process.env.NODE_ENV !== 'production') {
+  const { Server } = require('socket.io');
+  const io = new Server(httpServer, {
+    cors: { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true },
   });
 
-  socket.on('join_chat', (chatId) => socket.join(chatId));
+  io.on('connection', (socket) => {
+    socket.on('user_connected', (userId) => {
+      onlineUsers[userId] = socket.id;
+      io.emit('online_users', Object.keys(onlineUsers));
+    });
 
-  socket.on('send_message', ({ chatId, message }) => {
-    socket.to(chatId).emit('receive_message', message);
+    socket.on('join_chat', (chatId) => socket.join(chatId));
+
+    socket.on('send_message', ({ chatId, message }) => {
+      socket.to(chatId).emit('receive_message', message);
+    });
+
+    socket.on('send_notification', ({ recipientId, notification }) => {
+      const recipientSocket = onlineUsers[recipientId];
+      if (recipientSocket) io.to(recipientSocket).emit('new_notification', notification);
+    });
+
+    socket.on('disconnect', () => {
+      const userId = Object.keys(onlineUsers).find(k => onlineUsers[k] === socket.id);
+      if (userId) delete onlineUsers[userId];
+      io.emit('online_users', Object.keys(onlineUsers));
+    });
   });
 
-  socket.on('send_notification', ({ recipientId, notification }) => {
-    const recipientSocket = onlineUsers[recipientId];
-    if (recipientSocket) io.to(recipientSocket).emit('new_notification', notification);
-  });
+  app.set('io', io);
+}
 
-  socket.on('disconnect', () => {
-    const userId = Object.keys(onlineUsers).find(k => onlineUsers[k] === socket.id);
-    if (userId) delete onlineUsers[userId];
-    io.emit('online_users', Object.keys(onlineUsers));
-  });
-});
-
-app.set('io', io);
 app.set('onlineUsers', onlineUsers);
 
 // ── Security Middleware ─────────────────────────────────────
@@ -76,6 +79,8 @@ app.use(cors({
     if (!origin) return cb(null, true);
     if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) return cb(null, true);
     if (allowedOrigins.includes(origin)) return cb(null, true);
+    // In production allow all origins for Vercel deployment
+    if (process.env.NODE_ENV === 'production') return cb(null, true);
     cb(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -83,12 +88,11 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// Handle preflight requests for all routes
 app.options('*', cors());
 
 // ── Rate Limiting ───────────────────────────────────────────
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
+  windowMs: 15 * 60 * 1000,
   max: 20,
   message: { message: 'Too many requests, please try again later.' },
 });
@@ -123,8 +127,12 @@ app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 // ── Error Handler ───────────────────────────────────────────
 app.use(errorHandler);
 
-// ── Start Server ────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT} [${process.env.NODE_ENV}]`);
-});
+// ── Start Server (only when not on Vercel) ──────────────────
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 5000;
+  httpServer.listen(PORT, () => {
+    console.log(`✅ Server running on port ${PORT} [${process.env.NODE_ENV}]`);
+  });
+}
+
+module.exports = app;
